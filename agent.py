@@ -1,10 +1,12 @@
-import json, os, datetime
+import json, os
+from duckduckgo_search import DDGS
 
 class AdvancedAgent:
     def __init__(self, db="brain.json"):
         self.db = db
         self.memory = self.load()
-        self.tools = {"calc": self.calc, "fact": self.learn}
+        self.search_engine = DDGS() # Initialize search engine
+        self.tools = {"calc": self.calc, "fact": self.learn, "search": self.web_search}
 
     def load(self):
         if os.path.exists(self.db):
@@ -21,15 +23,20 @@ class AdvancedAgent:
 
     def calc(self, expr):
         try:
-            res = eval(expr, {"__builtins__": None}, {})
-            return str(res)
+            return str(eval(expr, {"__builtins__": None}, {}))
         except Exception as e:
-            self.memory["errors"].append(f"Failed {expr}: {str(e)}")
-            self.save()
-            return f"Error: {e}. Lesson recorded."
+            return f"Error: {e}"
 
-    def reflect(self):
-        return f"Brain State: {len(self.memory['facts'])} facts known. {len(self.memory['errors'])} mistakes learned from."
+    def web_search(self, query):
+        """Searches the live web and returns the first result."""
+        try:
+            # We use text() to get the content of the top result
+            results = list(self.search_engine.text(query, max_results=1))
+            if results:
+                return f"Found: {results[0]['body']}"
+            return "No results found."
+        except Exception as e:
+            return f"Search failed: {e}"
 
     def execute(self, inp):
         cmd = inp.lower().split()
@@ -38,17 +45,18 @@ class AdvancedAgent:
         # Router logic
         if cmd[0] == "learn": return self.learn(cmd[1], " ".join(cmd[2:]))
         if cmd[0] == "calc": return self.calc(" ".join(cmd[1:]))
-        if cmd[0] == "state": return self.reflect()
+        
+        # NEW: Web search command
+        if cmd[0] == "search": return self.web_search(" ".join(cmd[1:]))
+        
         if cmd[0] in self.memory["facts"]: return self.memory["facts"][cmd[0]]
         
-        return "I don't know that. Try 'learn [key] [value]', 'calc [math]', or 'state'."
+        return "Unknown command. Try 'learn [key] [val]', 'calc [expr]', or 'search [query]'."
 
 if __name__ == "__main__":
     agent = AdvancedAgent()
-    print("--- Advanced Agent Active ---")
+    print("--- Agent with Web Search Active ---")
     while True:
-        try:
-            ui = input("\nAgent > ")
-            if ui == "exit": break
-            print(agent.execute(ui))
-        except KeyboardInterrupt: break
+        ui = input("\nAgent > ")
+        if ui == "exit": break
+        print(agent.execute(ui))
