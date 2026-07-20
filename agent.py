@@ -1,81 +1,75 @@
+import json
 import os
 import datetime
-import json  # Import the json module
 
-class SimpleAgent:
+class SmartAgent:
     def __init__(self, memory_file="agent_memory.json"):
         self.memory_file = memory_file
-        self.memory = self.load_memory()  # Load memory from disk on startup
+        # Load conversation history from disk
+        self.history = self.load_history()
         self.tools = {
             "calculate": self.calculate,
-            "read_file": self.read_file,
-            "log": self.log_action
+            "read_file": self.read_file
         }
 
-    def load_memory(self):
-        """Loads memory from a JSON file if it exists."""
+    def load_history(self):
         if os.path.exists(self.memory_file):
             with open(self.memory_file, "r") as f:
-                try:
-                    return json.load(f)
-                except json.JSONDecodeError:
-                    return []
+                return json.load(f)
         return []
 
-    def save_memory(self):
-        """Saves current memory to a JSON file."""
+    def save_history(self):
         with open(self.memory_file, "w") as f:
-            json.dump(self.memory, f, indent=2)
+            json.dump(self.history, f, indent=2)
 
-    def log_action(self, action: str):
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"[{timestamp}] {action}"
-        self.memory.append(entry)
-        self.save_memory()  # Save every time we log something
-        return entry
+    def log_turn(self, role, content):
+        entry = {"role": role, "content": content, "ts": str(datetime.datetime.now())}
+        self.history.append(entry)
+        self.save_history()
 
-    def calculate(self, expression: str):
+    def calculate(self, expression):
         try:
             result = eval(expression, {"__builtins__": None}, {})
-            self.log_action(f"Calculated {expression} = {result}")
-            return f"Result: {result}"
-        except Exception:
-            return "Error: Invalid math expression."
+            return f"The result is {result}"
+        except:
+            return "I couldn't calculate that."
 
-    def read_file(self, filename: str):
-        try:
+    def read_file(self, filename):
+        if os.path.exists(filename):
             with open(filename, 'r') as f:
-                content = f.read()
-                self.log_action(f"Read file: {filename}")
-                return f"Content: {content}"
-        except FileNotFoundError:
-            return f"Error: File '{filename}' not found."
+                return f.read()
+        return "File not found."
 
-    def execute(self, user_input: str):
-        inp = user_input.lower().strip()
-        if "calculate" in inp or any(op in inp for op in ["+", "-", "*", "/"]):
-            expr = inp.replace("calculate:", "").strip()
-            return self.tools["calculate"](expr)
+    def execute(self, user_input):
+        # 1. Log the user's input to history
+        self.log_turn("user", user_input)
+        
+        # 2. Contextual logic (The "Brain")
+        inp = user_input.lower()
+        
+        if "calculate" in inp:
+            response = self.calculate(user_input.split("calculate")[-1])
         elif "read" in inp:
-            filename = inp.replace("read", "").strip()
-            return self.tools["read_file"](filename)
-        elif "history" in inp:
-            return f"Agent Memory: {self.memory}"
-        elif "hello" in inp or "hi" in inp:
-            return "Agent: Hello! I'm ready. I remember our history!"
+            response = self.read_file(user_input.split("read")[-1].strip())
+        elif "history" in inp or "what did we do" in inp:
+            # Reflection: Look at our stored history
+            summarized = [msg['content'] for msg in self.history[-5:]]
+            response = f"Here is what we've been doing: {summarized}"
+        elif any(g in inp for g in ["hi", "hello", "how are you"]):
+            response = "I'm doing great and I remember our past conversations. How can I help?"
         else:
-            return "Agent: I'm not sure what you mean."
+            # Fallback: Look at the last memory turn for context
+            last_context = self.history[-2]['content'] if len(self.history) > 1 else "nothing"
+            response = f"I'm not sure, but earlier we were talking about '{last_context}'. Did you mean to ask about that?"
 
-# --- Interactive Mode ---
+        # 3. Log agent's response
+        self.log_turn("assistant", response)
+        return response
+
 if __name__ == "__main__":
-    agent = SimpleAgent()
-    print("--- AI Agent Started (Type 'exit' to quit) ---")
-    
+    agent = SmartAgent()
+    print("--- Smart Agent Started (Type 'exit' to quit) ---")
     while True:
         user_in = input("\nYou: ")
-        if user_in.lower() == "exit":
-            print("Agent: Saving memory and shutting down...")
-            break
-        
-        response = agent.execute(user_in)
-        print(f"Agent: {response}")
+        if user_in.lower() == "exit": break
+        print(f"Agent: {agent.execute(user_in)}")
