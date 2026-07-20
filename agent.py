@@ -1,74 +1,62 @@
 import json
 import os
-import datetime
 
 class SmartAgent:
-    def __init__(self, memory_file="agent_memory.json"):
-        self.memory_file = memory_file
-        # Load conversation history from disk
-        self.history = self.load_history()
-        self.tools = {
-            "calculate": self.calculate,
-            "read_file": self.read_file
-        }
+    def __init__(self, kb_file="knowledge.json"):
+        self.kb_file = kb_file
+        self.knowledge = self.load_knowledge()
 
-    def load_history(self):
-        if os.path.exists(self.memory_file):
-            with open(self.memory_file, "r") as f:
+    def load_knowledge(self):
+        if os.path.exists(self.kb_file):
+            with open(self.kb_file, "r") as f:
                 return json.load(f)
-        return []
+        return {"facts": [], "lessons_learned": []}
 
-    def save_history(self):
-        with open(self.memory_file, "w") as f:
-            json.dump(self.history, f, indent=2)
+    def save_knowledge(self):
+        with open(self.kb_file, "w") as f:
+            json.dump(self.knowledge, f, indent=2)
 
-    def log_turn(self, role, content):
-        entry = {"role": role, "content": content, "ts": str(datetime.datetime.now())}
-        self.history.append(entry)
-        self.save_history()
-
-    def calculate(self, expression):
-        try:
-            result = eval(expression, {"__builtins__": None}, {})
-            return f"The result is {result}"
-        except:
-            return "I couldn't calculate that."
-
-    def read_file(self, filename):
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                return f.read()
-        return "File not found."
+    def learn(self, category, item):
+        """Adds a fact or lesson to our permanent memory."""
+        if item not in self.knowledge[category]:
+            self.knowledge[category].append(item)
+            self.save_knowledge()
+            return f"I've learned: {item}"
+        return "I already knew that."
 
     def execute(self, user_input):
-        # 1. Log the user's input to history
-        self.log_turn("user", user_input)
-        
-        # 2. Contextual logic (The "Brain")
         inp = user_input.lower()
-        
-        if "calculate" in inp:
-            response = self.calculate(user_input.split("calculate")[-1])
-        elif "read" in inp:
-            response = self.read_file(user_input.split("read")[-1].strip())
-        elif "history" in inp or "what did we do" in inp:
-            # Reflection: Look at our stored history
-            summarized = [msg['content'] for msg in self.history[-5:]]
-            response = f"Here is what we've been doing: {summarized}"
-        elif any(g in inp for g in ["hi", "hello", "how are you"]):
-            response = "I'm doing great and I remember our past conversations. How can I help?"
-        else:
-            # Fallback: Look at the last memory turn for context
-            last_context = self.history[-2]['content'] if len(self.history) > 1 else "nothing"
-            response = f"I'm not sure, but earlier we were talking about '{last_context}'. Did you mean to ask about that?"
 
-        # 3. Log agent's response
-        self.log_turn("assistant", response)
-        return response
+        # 1. Learn Mode: Allows you to manually teach the agent
+        if "learn that" in inp:
+            fact = user_input.split("learn that")[-1].strip()
+            return self.learn("facts", fact)
+
+        # 2. Knowledge Query
+        elif "what do you know" in inp:
+            return f"Facts: {self.knowledge['facts']}. Lessons: {self.knowledge['lessons_learned']}"
+
+        # 3. Calculation with Learning from Mistakes
+        elif "calculate" in inp:
+            try:
+                expr = inp.split("calculate")[-1].strip()
+                result = eval(expr, {"__builtins__": None}, {})
+                return f"Result: {result}"
+            except Exception as e:
+                error_msg = f"Failed to calculate '{inp}'. Reason: {str(e)}"
+                self.learn("lessons_learned", error_msg)
+                return f"I made a mistake: {error_msg}. I have recorded this to learn for next time."
+
+        # 4. Basic Conversational Logic
+        elif "hi" in inp or "hello" in inp:
+            return "Hello! I am learning. You can 'learn that [fact]' or ask me to calculate something."
+        
+        else:
+            return "I am not sure. Try 'learn that [fact]' or 'what do you know?'"
 
 if __name__ == "__main__":
     agent = SmartAgent()
-    print("--- Smart Agent Started (Type 'exit' to quit) ---")
+    print("--- Learning Agent Started ---")
     while True:
         user_in = input("\nYou: ")
         if user_in.lower() == "exit": break
