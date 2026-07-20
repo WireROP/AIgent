@@ -1,68 +1,81 @@
 import os
+import datetime
+import json  # Import the json module
 
 class SimpleAgent:
-    def __init__(self):
-        # Tools are organized here. 
-        # Future Rust modules will be called from here.
+    def __init__(self, memory_file="agent_memory.json"):
+        self.memory_file = memory_file
+        self.memory = self.load_memory()  # Load memory from disk on startup
         self.tools = {
             "calculate": self.calculate,
-            "read_file": self.read_file
+            "read_file": self.read_file,
+            "log": self.log_action
         }
 
+    def load_memory(self):
+        """Loads memory from a JSON file if it exists."""
+        if os.path.exists(self.memory_file):
+            with open(self.memory_file, "r") as f:
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    return []
+        return []
+
+    def save_memory(self):
+        """Saves current memory to a JSON file."""
+        with open(self.memory_file, "w") as f:
+            json.dump(self.memory, f, indent=2)
+
+    def log_action(self, action: str):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entry = f"[{timestamp}] {action}"
+        self.memory.append(entry)
+        self.save_memory()  # Save every time we log something
+        return entry
+
     def calculate(self, expression: str):
-        """Tool: Performs math calculations."""
         try:
-            # Safely evaluate simple math
             result = eval(expression, {"__builtins__": None}, {})
+            self.log_action(f"Calculated {expression} = {result}")
             return f"Result: {result}"
-        except Exception as e:
-            return f"Error: Could not calculate '{expression}'. {e}"
+        except Exception:
+            return "Error: Invalid math expression."
 
     def read_file(self, filename: str):
-        """Tool: Reads text from a file."""
         try:
             with open(filename, 'r') as f:
-                return f"Content: {f.read()}"
+                content = f.read()
+                self.log_action(f"Read file: {filename}")
+                return f"Content: {content}"
         except FileNotFoundError:
             return f"Error: File '{filename}' not found."
 
     def execute(self, user_input: str):
-        """The core Agent Loop."""
-        print(f"\n[Agent] Received: '{user_input}'")
-        
-        user_input_lower = user_input.lower()
-        
-        if "calculate:" in user_input_lower:
-            expr = user_input.split("calculate:")[-1].strip()
+        inp = user_input.lower().strip()
+        if "calculate" in inp or any(op in inp for op in ["+", "-", "*", "/"]):
+            expr = inp.replace("calculate:", "").strip()
             return self.tools["calculate"](expr)
-        
-        elif "read " in user_input_lower:
-            filename = user_input.split("read")[-1].strip()
+        elif "read" in inp:
+            filename = inp.replace("read", "").strip()
             return self.tools["read_file"](filename)
-        
+        elif "history" in inp:
+            return f"Agent Memory: {self.memory}"
+        elif "hello" in inp or "hi" in inp:
+            return "Agent: Hello! I'm ready. I remember our history!"
         else:
-            # Fixed the syntax error by using a clean string format
-            return "Agent: I am not sure how to handle that. Try 'calculate: 2+2' or 'read test.txt'."
+            return "Agent: I'm not sure what you mean."
 
-# --- Testing Section ---
+# --- Interactive Mode ---
 if __name__ == "__main__":
     agent = SimpleAgent()
+    print("--- AI Agent Started (Type 'exit' to quit) ---")
     
-    # 1. Create a dummy file for testing
-    with open("test.txt", "w") as f:
-        f.write("Hello! This is a test file for your agent.")
-
-    # 2. Run test commands
-    tasks = [
-        "calculate: 15 * 15",
-        "read test.txt",
-        "Hello!"
-    ]
-    
-    for task in tasks:
-        result = agent.execute(task)
-        print(f"[Result] {result}")
-
-    # Cleanup: Remove the file after testing
-    if os.path.exists("test.txt"):
-        os.remove("test.txt")
+    while True:
+        user_in = input("\nYou: ")
+        if user_in.lower() == "exit":
+            print("Agent: Saving memory and shutting down...")
+            break
+        
+        response = agent.execute(user_in)
+        print(f"Agent: {response}")
