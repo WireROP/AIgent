@@ -1,63 +1,54 @@
-import json
-import os
+import json, os, datetime
 
-class SmartAgent:
-    def __init__(self, kb_file="knowledge.json"):
-        self.kb_file = kb_file
-        self.knowledge = self.load_knowledge()
+class AdvancedAgent:
+    def __init__(self, db="brain.json"):
+        self.db = db
+        self.memory = self.load()
+        self.tools = {"calc": self.calc, "fact": self.learn}
 
-    def load_knowledge(self):
-        if os.path.exists(self.kb_file):
-            with open(self.kb_file, "r") as f:
-                return json.load(f)
-        return {"facts": [], "lessons_learned": []}
+    def load(self):
+        if os.path.exists(self.db):
+            with open(self.db, "r") as f: return json.load(f)
+        return {"facts": {}, "errors": []}
 
-    def save_knowledge(self):
-        with open(self.kb_file, "w") as f:
-            json.dump(self.knowledge, f, indent=2)
+    def save(self):
+        with open(self.db, "w") as f: json.dump(self.memory, f, indent=2)
 
-    def learn(self, category, item):
-        """Adds a fact or lesson to our permanent memory."""
-        if item not in self.knowledge[category]:
-            self.knowledge[category].append(item)
-            self.save_knowledge()
-            return f"I've learned: {item}"
-        return "I already knew that."
+    def learn(self, key, val):
+        self.memory["facts"][key] = val
+        self.save()
+        return f"Stored: {key} = {val}"
 
-    def execute(self, user_input):
-        inp = user_input.lower()
+    def calc(self, expr):
+        try:
+            res = eval(expr, {"__builtins__": None}, {})
+            return str(res)
+        except Exception as e:
+            self.memory["errors"].append(f"Failed {expr}: {str(e)}")
+            self.save()
+            return f"Error: {e}. Lesson recorded."
 
-        # 1. Learn Mode: Allows you to manually teach the agent
-        if "learn that" in inp:
-            fact = user_input.split("learn that")[-1].strip()
-            return self.learn("facts", fact)
+    def reflect(self):
+        return f"Brain State: {len(self.memory['facts'])} facts known. {len(self.memory['errors'])} mistakes learned from."
 
-        # 2. Knowledge Query
-        elif "what do you know" in inp:
-            return f"Facts: {self.knowledge['facts']}. Lessons: {self.knowledge['lessons_learned']}"
-
-        # 3. Calculation with Learning from Mistakes
-        elif "calculate" in inp:
-            try:
-                expr = inp.split("calculate")[-1].strip()
-                result = eval(expr, {"__builtins__": None}, {})
-                return f"Result: {result}"
-            except Exception as e:
-                error_msg = f"Failed to calculate '{inp}'. Reason: {str(e)}"
-                self.learn("lessons_learned", error_msg)
-                return f"I made a mistake: {error_msg}. I have recorded this to learn for next time."
-
-        # 4. Basic Conversational Logic
-        elif "hi" in inp or "hello" in inp:
-            return "Hello! I am learning. You can 'learn that [fact]' or ask me to calculate something."
+    def execute(self, inp):
+        cmd = inp.lower().split()
+        if not cmd: return "Speak to me!"
         
-        else:
-            return "I am not sure. Try 'learn that [fact]' or 'what do you know?'"
+        # Router logic
+        if cmd[0] == "learn": return self.learn(cmd[1], " ".join(cmd[2:]))
+        if cmd[0] == "calc": return self.calc(" ".join(cmd[1:]))
+        if cmd[0] == "state": return self.reflect()
+        if cmd[0] in self.memory["facts"]: return self.memory["facts"][cmd[0]]
+        
+        return "I don't know that. Try 'learn [key] [value]', 'calc [math]', or 'state'."
 
 if __name__ == "__main__":
-    agent = SmartAgent()
-    print("--- Learning Agent Started ---")
+    agent = AdvancedAgent()
+    print("--- Advanced Agent Active ---")
     while True:
-        user_in = input("\nYou: ")
-        if user_in.lower() == "exit": break
-        print(f"Agent: {agent.execute(user_in)}")
+        try:
+            ui = input("\nAgent > ")
+            if ui == "exit": break
+            print(agent.execute(ui))
+        except KeyboardInterrupt: break
